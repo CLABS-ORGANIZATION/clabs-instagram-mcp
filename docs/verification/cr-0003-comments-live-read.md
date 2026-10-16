@@ -238,3 +238,29 @@ response version headers, uses limit 50 and has a 12-step continuation ceiling.
   introspection authentication requirements and scope metadata.
 - [Support](https://developers.facebook.com/documentation/instagram-platform/support):
   provider bug-reporting, status and developer tools.
+
+
+### Committed-probe confirmation and local validation
+
+At **2026-10-16 20:05 UTC**, both versioned probes ran from clean source commit
+`bdc61942787f13becd5eb225e97cf454f2c5bbe7`, Node 22.22.1, after a fresh isolated
+TypeScript build. The broader wire matrix again made 41 GETs and reproduced
+all 2/1/6 page counts at size 50 and 3/1/11 at size 25, with zero items and
+terminal stops. The recent extra sample's counter had increased from 9 to 12;
+its comments edge remained empty. Source identity and clean-tree state were
+emitted by each probe, with the existing Infisical configuration used for each
+new process.
+
+The HTTP/API/MCP stdio probe also agreed at every continuation: 2/1/6 pages,
+zero items, correct terminal states, and `instagram-api-version: v26.0` on HTTP
+responses. Full fields, id-only and omitted fields remained empty. No active
+MCP process was replaced. This follow-up evidence commit changes docs only.
+
+Local syntax checks, repository lint, formatting and build pass. The existing
+comment API, tool and MCP regression modules pass when run directly (29, 40
+and 1 tests respectively; 70 total), including malformed-data, denied and
+terminal/continued-page cases. No new synthetic tests were added for these
+GET-only diagnostic scripts; their real executions are recorded above. The
+previous full 1,256-test/100%-coverage result applies to unchanged production
+source and tests, not a new full-suite run in this follow-up. CI audit and
+Windows remain the separately tracked inherited limits until PR #6 is integrated.
