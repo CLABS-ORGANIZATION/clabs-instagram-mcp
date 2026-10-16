@@ -48,10 +48,15 @@ migration or catalog promotion.
 
 ## Dependencies and baseline limits
 
-Issue #1 requires adapting the reviewed Web pilot pattern. Its private parent
-clabs-work #14 is not readable through the present GitHub connection (404).
-Do not claim that dependency was verified: keep the delivery draft until its
-review evidence can be inspected or the owner explicitly resolves it.
+Issue #1 requires adapting the reviewed Web pilot pattern. Its parent
+clabs-work #14 is readable through the authenticated CLI REST API. The pilot
+is Web issue #35 / PR #36, merged as
+`399e417dabc5d9b140a55475442a8cd645594503`. Its recorded review targets
+`e3d645b8e6648d1722edbe8592dce63c3b5fe287`:
+[review evidence](https://github.com/CLABS-ORGANIZATION/clabs-penknife-web/pull/36#pullrequestreview-5402291021).
+The pilot explicitly distinguishes a recorded agent review from independent
+native approval. This delivery adapts that distinction; its own review and
+merge authority remain separate.
 
 The active MCP checkout uses the separate foundation branch at
 `3ec0f564cfb3a419d06a67c0dc4ed515917e28d0`, with a lockfile adjustment and
@@ -85,10 +90,13 @@ of Instagram objects is involved.
 
 ## Delivery state
 
-Prepared locally on `codex/maintenance-foundation`. The final validation,
-publication, review and integration evidence must state what actually happened.
-GitHub issue and branch creation were rejected with 403; no comments Bug or
-PR was published. The GitHub CLI credential is also invalid.
+Prepared on `codex/maintenance-foundation`. Publication and integration
+evidence belongs to issue #1 and the PR. The GitHub connector initially
+rejected writes with 403. Retrying the CLI with network access confirmed a
+valid credential and repository write permissions; REST works. The earlier
+invalid-credential diagnosis came from a network-restricted check and was
+incorrect. The comments Bug is now [issue #2](https://github.com/CLABS-ORGANIZATION/clabs-instagram-mcp/issues/2).
+No merge or runtime installation is authorized by this delivery.
 
 Validation on Node 22.22.1 / npm 9.2.0 with a fresh install from main's
 unchanged lockfile: docs guard and 5 guard tests, lint, formatting, build and
