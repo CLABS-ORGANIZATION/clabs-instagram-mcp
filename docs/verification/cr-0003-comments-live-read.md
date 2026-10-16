@@ -426,3 +426,86 @@ The independently minimal curl control still reproduces an empty initial page
 without those optional parameters or any connector code. The exact visibility
 restriction or provider-side cause remains open. The new documented age-gating
 and restricted-user limits are hypotheses to verify, not established diagnoses.
+
+
+## Test environments and matching incident reports
+
+User-requested broader research on 2026-10-16 changes the investigation priority.
+Endpoint documentation had been reviewed; the prior incident search was
+incomplete. No additional Instagram request or state change is needed to record
+these findings.
+
+### What Meta documents as a test environment
+
+- [Test Apps](https://developers.facebook.com/documentation/development/build-and-test/test-apps):
+  child apps clone parent settings at creation, isolate app configuration, and
+  are always Development-mode apps. A clone therefore does not prove that a
+  Development/publication visibility restriction has been bypassed.
+- [Test Users](https://developers.facebook.com/documentation/development/build-and-test/test-users):
+  simulated Facebook accounts for testing Facebook Login, distinct from real
+  testers. The current page also states new test-user creation is temporarily
+  disabled. This is not an Instagram Login comment sandbox.
+- Meta's [Instagram Login Postman collection](https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login)
+  provides requests against the actual API. It is a reference client, not an
+  independently populated simulated Instagram server.
+- No reviewed official source provides a synthetic Instagram comment environment
+  that reproduces live authorization. Our offline HTTP/MCP fixtures test local
+  implementation; only an authorized real API control can certify access.
+
+### Firsthand reports, distinguished from provider guarantees
+
+1. [Openreply issue #64](https://github.com/diwenne/openreply/issues/64),
+   opened 2026-09-16, reports positive counts and empty raw comments even with
+   an accepted Instagram tester. In the [author's follow-up](https://github.com/diwenne/openreply/issues/64#issuecomment-5703149608),
+   publishing the app reportedly restored reading on the next call without
+   another change. The issue remains open in GitHub despite that resolution report.
+2. A [Stack Overflow answer](https://stackoverflow.com/questions/78792152/the-instagram-api-is-returning-no-comments-data-for-the-specified-post/78806543)
+   describes the same Instagram Login symptom and reports recovery after moving
+   the app to Live. This is another account's reported outcome, not a Meta guarantee.
+
+These primary firsthand accounts support prioritizing publication state; they
+are not a reproduction on CLABS. Forked/copied setup guides were not counted as
+independent corroboration. No workaround code was imported.
+
+### Publication, app modes and access levels are separate
+
+[Meta's publishing guide](https://developers.facebook.com/documentation/development/release)
+separates Use Case Apps (dashboard Publish / Go live) from the app-mode toggle
+for applicable app types, and states Business apps rely on access levels.
+Do not assume the older Development/Live toggle exists in this dashboard.
+The [App Modes guide](https://developers.facebook.com/documentation/development/build-and-test/app-modes)
+describes role-user limits but does not specifically guarantee comments GET
+visibility for this account. The Instagram-specific App Review table still
+says own/managed-business Standard Access does not require review; that is
+not proof that an unpublished app can read these comments. Publication is
+not interchangeable with obtaining Advanced Access or App Review approval.
+
+CLABS screenshots show a Use Case dashboard with Publish / Unpublished.
+Current grant and active-app evidence are already recorded. Unpublished
+status is now the **leading hypothesis to test**, rather than another reason
+to add scopes or rotate tokens. It is not yet the verified cause of Bug #2.
+
+### Proposed controlled validation, not executed or authorized to publish
+
+First inspect CLABS Media Pilot's Publish section read-only and enumerate its
+actual blockers and prerequisites. Do not click the final publication action,
+create legal URLs with invented facts, change scopes or request Advanced Access
+as a shortcut. A concrete publication operation needs its own authorization;
+the present CR authorizes reads and isolated code/evidence only.
+
+If publication is subsequently approved and prerequisites are satisfied:
+
+1. Preserve the already verified app/account, current token, media IDs, code SHA,
+   fields, page size and MCP write controls. Capture a fresh GET-only baseline.
+2. Change only the explicitly approved publication state and record the UI result.
+3. Repeat the same bounded raw/API/stdio reads, recording version headers,
+   statuses, counts and terminal flags, without comment contents or credentials.
+4. If comments become readable, record the before/after evidence against this
+   hypothesis. If not, retain the result and prepared provider packet; do not
+   change additional settings without new evidence and authority.
+
+An isolated normal app with a controlled professional account is an alternative
+for experiments, but still uses the real Instagram API. A child Test App is
+useful for configuration isolation, and its permanent Development mode may
+retain the exact condition under investigation. No test app/account/comment,
+webhook, publication, permission, token or active MCP was created or changed.
