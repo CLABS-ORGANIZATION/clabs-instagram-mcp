@@ -25,7 +25,8 @@ const profile = resolveProfile(loadProfiles().profiles, 'default');
 registerSecret(profile.accessToken);
 const log = { debug() {}, info() {}, warn() {}, error() {}, child: () => log };
 const serverMode = process.argv[2] === '--server';
-const emit = (record) => process.stdout.write(`IG_DIAG ${JSON.stringify(record)}\n`);
+const emit = (record) =>
+  (serverMode ? process.stderr : process.stdout).write(`IG_DIAG ${JSON.stringify(record)}\n`);
 const shape = (body) => ({
   keys: Object.keys(body ?? {}),
   dataPresent: Object.hasOwn(body ?? {}, 'data'),
@@ -41,7 +42,7 @@ const request = createIgRequest({
   log,
   fetchImpl: async (...args) => {
     const outgoing = new URL(args[0]);
-    if (!serverMode && outgoing.pathname.endsWith('/comments'))
+    if (outgoing.pathname.endsWith('/comments'))
       emit({
         stage: 'request-contract',
         method: args[1]?.method,
@@ -55,14 +56,13 @@ const request = createIgRequest({
         hasAppsecretProof: outgoing.searchParams.has('appsecret_proof'),
       });
     const response = await fetch(...args);
-    if (!serverMode)
-      emit({
-        stage: 'http',
-        status: response.status,
-        instagramVersion: response.headers.get('instagram-api-version'),
-        facebookVersion: response.headers.get('facebook-api-version'),
-        ...shape(await response.clone().json()),
-      });
+    emit({
+      stage: 'http',
+      status: response.status,
+      instagramVersion: response.headers.get('instagram-api-version'),
+      facebookVersion: response.headers.get('facebook-api-version'),
+      ...shape(await response.clone().json()),
+    });
     return response;
   },
 });
@@ -119,8 +119,59 @@ if (serverMode) {
     env: Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)),
     stderr: 'pipe',
   });
-  // Never forward child stderr: unexpected errors may include provider data.
-  transport.stderr?.on('data', () => {});
+  // Only this script's fixed diagnostic records may cross stderr; discard
+  // arbitrary child errors, messages and partial lines without forwarding them.
+  let stderrBuffer = '';
+  const queryKeys = ['access_token', 'after', 'fields', 'limit'];
+  const safeVersion = (value) => (/^v\d{1,3}\.\d{1,2}$/.test(value ?? '') ? value : null);
+  transport.stderr?.on('data', (chunk) => {
+    stderrBuffer = (stderrBuffer + chunk.toString()).slice(-65536);
+    const lines = stderrBuffer.split('\n');
+    stderrBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('IG_DIAG {')) continue;
+      try {
+        const record = JSON.parse(line.slice(8));
+        if (record.stage === 'request-contract') {
+          const keys = Array.isArray(record.queryKeys) ? record.queryKeys : [];
+          const limit = Number(record.limitSent);
+          emit({
+            stage: 'request-contract',
+            source: 'mcp-server',
+            method: record.method === 'GET' ? 'GET' : 'unexpected',
+            host: record.host === 'graph.instagram.com' ? record.host : 'unexpected',
+            path:
+              /^\/v\d{1,3}\.\d{1,2}\/\d+\/comments$/.test(record.path ?? '') &&
+              ids.some((id) => record.path.endsWith('/' + id + '/comments'))
+                ? record.path
+                : 'unexpected',
+            queryKeys: keys.filter((key) => queryKeys.includes(key)),
+            unexpectedQueryKeyCount: keys.filter((key) => !queryKeys.includes(key)).length,
+            limitSent: Number.isInteger(limit) && limit >= 1 && limit <= 100 ? limit : null,
+            fieldsMatchExpected: record.fieldsSent === fields,
+            hasAfter: record.hasAfter === true,
+            tokenMatchesProfile: record.tokenMatchesProfile === true,
+            hasAppsecretProof: record.hasAppsecretProof === true,
+          });
+        } else if (record.stage === 'http') {
+          emit({
+            stage: 'http',
+            source: 'mcp-server',
+            status: Number.isInteger(record.status) ? record.status : undefined,
+            instagramVersion: safeVersion(record.instagramVersion),
+            facebookVersion: safeVersion(record.facebookVersion),
+            dataPresent: record.dataPresent === true,
+            dataArray: record.dataArray === true,
+            items: Number.isInteger(record.items) && record.items >= 0 ? record.items : undefined,
+            hasAfter: record.hasAfter === true,
+            hasNext: record.hasNext === true,
+          });
+        }
+      } catch {
+        // Ignore malformed stderr; never emit its contents.
+      }
+    }
+  });
   const client = new Client({ name: 'clabs-comments-read-client', version: '0.0.0' });
   try {
     await client.connect(transport);
@@ -156,8 +207,11 @@ if (serverMode) {
           }
         }
       }
+      // Independent walks: one layer's terminal page must not stop the other's
+      // continuation, and separate live requests are not an immutable snapshot.
       let apiAfter;
-      let mcpAfter;
+      let apiPages = 0;
+      let apiItems = 0;
       for (let n = 1; n <= 12; n++) {
         const api = await listComments(request, {
           mediaId,
@@ -166,6 +220,8 @@ if (serverMode) {
           fetchAll: true,
           after: apiAfter,
         });
+        apiPages = n;
+        apiItems += api.items.length;
         emit({
           stage: 'api',
           requestedLimit: 100,
@@ -176,6 +232,14 @@ if (serverMode) {
           truncated: api.truncated,
           note: api.note,
         });
+        apiAfter = api.after;
+        if (!apiAfter) break;
+      }
+      let mcpAfter;
+      let mcpPages = 0;
+      let mcpItems = 0;
+      let mcpError = false;
+      for (let n = 1; n <= 12; n++) {
         const result = await client.callTool({
           name: 'instagram_list_comments',
           arguments: {
@@ -187,6 +251,9 @@ if (serverMode) {
           },
         });
         const mcp = result.structuredContent;
+        mcpPages = n;
+        mcpItems += mcp?.items?.length ?? 0;
+        mcpError ||= !!result.isError;
         emit({
           stage: 'mcp-stdio',
           requestedLimit: 100,
@@ -197,13 +264,21 @@ if (serverMode) {
           hasAfter: !!mcp?.paging?.after,
           truncated: mcp?.paging?.truncated,
           note: mcp?.note,
-          sameSummary:
-            api.items.length === mcp?.items?.length && api.truncated === mcp?.paging?.truncated,
         });
-        apiAfter = api.after;
         mcpAfter = mcp?.paging?.after;
-        if (!apiAfter || !mcpAfter || result.isError) break;
+        if (!mcpAfter || result.isError) break;
       }
+      emit({
+        stage: 'layer-walks',
+        mediaId,
+        apiPages,
+        mcpPages,
+        apiItems,
+        mcpItems,
+        apiHasAfter: !!apiAfter,
+        mcpHasAfter: !!mcpAfter,
+        mcpError,
+      });
     }
   } catch (error) {
     emit({ stage: 'failure', kind: error.kind, status: error.status, code: error.code });

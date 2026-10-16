@@ -361,3 +361,35 @@ tests, zero failures, and 100% statements/branches/functions/lines**. No tests
 were weakened or changed to bypass those environmental restrictions. Existing
 production audit and Windows fixture issues remain separately tracked in #5/#4
 and prepared in PR #6; this change does not import their fixes.
+
+
+### Diagnostic-walk correction discovered during the live recheck
+
+The first post-fix run at 20:26 UTC used clean code
+`baac73ba3cccd06e93b296a3855e741813d5a898`. All captured local comment requests
+sent limit 50 for API input 100, with the expected token, query keys and no
+appsecret_proof. All returned data arrays were empty. On the homenaje, the
+fourth interleaved API/MCP comparison had different continuation flags. The
+old diagnostic then stopped both walks when either layer ended: that left the
+API's advertised continuation uninspected. This is a defect in the diagnostic
+harness, separate from production comment processing. That run cannot be
+presented as an exhaustive matching walk. Its exact cause for the differing
+live flags was not established.
+
+The diagnostic now walks API and stdio independently, each with its own cursor
+and 12-step ceiling. It captures the stdio server's own HTTP request/response
+shape over an explicitly sanitized stderr channel, preserving stdout MCP
+protocol purity. Arbitrary stderr and untrusted text are discarded; accepted
+records are reconstructed from fixed labels, known numeric media paths,
+whitelisted query keys, booleans/counts and bounded version formats. Tokens,
+URLs, original cursors, field values from users and provider messages are
+never forwarded.
+
+A development run of that harness at 20:29 UTC (tree explicitly marked dirty)
+shows each independent API/MCP walk terminal after 2/1/6 steps. The nine stdio
+HTTP responses contain empty arrays and their next flags match the nine MCP
+continuation results. Both processes send limit 50; child request fields match
+the documented field set, IDs stay in the expected paths and token matching
+is confirmed only as a boolean. This supports correct mapping in that run;
+it does not retroactively explain the earlier live difference or prove a
+provider-side cause. A clean-source repeat is recorded separately.
