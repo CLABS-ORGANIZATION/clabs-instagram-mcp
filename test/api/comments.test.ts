@@ -101,7 +101,7 @@ test('listComments returns a single page, forwards fields/limit, and flattens in
       },
       { id: 'c2', text: 'ok' },
     ],
-    paging: { cursors: { after: 'CUR' } },
+    paging: { cursors: { after: 'CUR' }, next: 'https://graph.instagram.com/synthetic-next' },
   };
   const { req, calls } = fakeReq(() => page);
 
@@ -211,9 +211,15 @@ test('listComments fetchAll caps at maxItems and reports truncated with a resume
   const responder = (opts: IgRequestOptions) => {
     const after = opts.params?.after;
     if (after === undefined)
-      return { data: [{ id: '1' }, { id: '2' }], paging: { cursors: { after: 'A1' } } };
+      return {
+        data: [{ id: '1' }, { id: '2' }],
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     if (after === 'A1')
-      return { data: [{ id: '3' }, { id: '4' }], paging: { cursors: { after: 'A2' } } };
+      return {
+        data: [{ id: '3' }, { id: '4' }],
+        paging: { cursors: { after: 'A2' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     throw new Error(`unexpected cursor ${String(after)}`);
   };
   const { req, calls } = fakeReq(responder);
@@ -240,7 +246,10 @@ test('listComments fetchAll stopping exactly at the cap with no more data is NOT
   const responder = (opts: IgRequestOptions) => {
     const after = opts.params?.after;
     if (after === undefined)
-      return { data: [{ id: '1' }, { id: '2' }], paging: { cursors: { after: 'A1' } } };
+      return {
+        data: [{ id: '1' }, { id: '2' }],
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     if (after === 'A1') return { data: [{ id: '3' }, { id: '4' }], paging: {} };
     throw new Error('unexpected');
   };
@@ -256,7 +265,10 @@ test('listComments fetchAll stopping exactly at the cap with no more data is NOT
 test('listComments fetchAll keeps a partial result when a cursor goes stale mid-listing (CC-DATA-1)', async () => {
   const responder = (opts: IgRequestOptions) => {
     if (opts.params?.after === undefined)
-      return { data: [{ id: '1' }, { id: '2' }], paging: { cursors: { after: 'A1' } } };
+      return {
+        data: [{ id: '1' }, { id: '2' }],
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     throw new InstagramError('cursor invalid', { kind: 'validation', code: 100 });
   };
   const { req, calls } = fakeReq(responder);
@@ -289,8 +301,18 @@ test('listComments fetchAll stops when a page returns no items but still adverti
   const responder = (opts: IgRequestOptions) => {
     guard();
     const after = opts.params?.after;
-    if (after === undefined) return { data: [{ id: 'c1' }], paging: { cursors: { after: 'A1' } } };
-    return { data: [], paging: { cursors: { after: `${String(after)}+` } } };
+    if (after === undefined)
+      return {
+        data: [{ id: 'c1' }],
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
+    return {
+      data: [],
+      paging: {
+        cursors: { after: `${String(after)}+` },
+        next: 'https://graph.instagram.com/synthetic-next',
+      },
+    };
   };
   const { req, calls } = fakeReq(responder);
 
@@ -310,7 +332,10 @@ test('listComments fetchAll stops when the edge repeats the same cursor (no forw
   const guard = runawayGuard(6);
   const responder = () => {
     guard();
-    return { data: [{ id: 'c1' }, { id: 'c2' }], paging: { cursors: { after: 'STUCK' } } };
+    return {
+      data: [{ id: 'c1' }, { id: 'c2' }],
+      paging: { cursors: { after: 'STUCK' }, next: 'https://graph.instagram.com/synthetic-next' },
+    };
   };
   const { req, calls } = fakeReq(responder);
 
@@ -596,4 +621,112 @@ test('setCommentsEnabled POSTs comment_enabled to the media node in both directi
   assert.deepEqual(calls[1]?.params, { comment_enabled: true });
   assertPlainGraphCall(calls[0]);
   assertPlainGraphCall(calls[1]);
+});
+
+// CR-0003 / Bug #2: envelopes observed in the canary read, with synthetic
+// cursors and URLs only. These fixtures do not certify access to real comments.
+test('listComments does not advertise a terminal cursor-only empty page as truncated', async () => {
+  const { req, calls } = fakeReq(() => ({
+    data: [],
+    paging: { cursors: { before: 'SYNTHETIC_BEFORE', after: 'SYNTHETIC_AFTER' } },
+  }));
+  for (const fetchAll of [false, true]) {
+    const result = await listComments(req, { mediaId: 'M1', maxItems: 200, fetchAll });
+    assert.deepEqual(result.items, []);
+    assert.equal(result.after, undefined);
+    assert.equal(result.truncated, false);
+    assert.match(String(result.note), /counts do not prove API access/);
+    assert.doesNotMatch(String(result.note), /filtered|deleted|resume/);
+  }
+  assert.equal(calls.length, 2, 'one request per call, no speculative continuation');
+});
+
+test('listComments preserves a genuine empty-page continuation and terminates on its last page', async () => {
+  const { req, calls } = fakeReq((opts) => {
+    if (opts.params?.after === 'SYNTHETIC_AFTER') {
+      return {
+        data: [],
+        paging: {
+          cursors: { after: 'TERMINAL' },
+          previous: 'https://graph.instagram.com/synthetic-previous',
+        },
+      };
+    }
+    return {
+      data: [],
+      paging: {
+        cursors: { after: 'SYNTHETIC_AFTER' },
+        next: 'https://untrusted.invalid/do-not-follow',
+      },
+    };
+  });
+  const first = await listComments(req, { mediaId: 'M1', maxItems: 200, fetchAll: true });
+  assert.equal(first.after, 'SYNTHETIC_AFTER');
+  assert.equal(first.truncated, true);
+  assert.match(String(first.note), /no items.*resume from `after`/);
+  assert.doesNotMatch(String(first.note), /filtered|deleted/);
+  const last = await listComments(req, {
+    mediaId: 'M1',
+    maxItems: 200,
+    fetchAll: true,
+    after: first.after,
+  });
+  assert.equal(last.after, undefined);
+  assert.equal(last.truncated, false);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.path === '/M1/comments' && call.host === undefined));
+  assert.equal(calls[1]?.params?.after, 'SYNTHETIC_AFTER');
+});
+
+test('listComments rejects absent and malformed data arrays rather than claiming zero comments', async () => {
+  for (const page of [{}, { data: null }, { data: {} }, { data: 'unexpected' }, null]) {
+    const { req } = fakeReq(() => page);
+    await assert.rejects(
+      () => listComments(req, { mediaId: 'M1', maxItems: 200 }),
+      (error: unknown) =>
+        error instanceof InstagramError &&
+        error.kind === 'upstream' &&
+        /no data array/.test(error.message),
+    );
+  }
+});
+
+test('listComments rejects an advertised continuation with no usable cursor', async () => {
+  for (const cursors of [undefined, {}, { after: '' }, { after: null }, { after: 17 }]) {
+    const { req } = fakeReq(() => ({
+      data: [],
+      paging: { next: 'https://graph.instagram.com/synthetic-next', cursors },
+    }));
+    await assert.rejects(
+      () => listComments(req, { mediaId: 'M1', maxItems: 200 }),
+      (error: unknown) =>
+        error instanceof InstagramError &&
+        error.kind === 'upstream' &&
+        /without a usable cursor/.test(error.message),
+    );
+  }
+});
+
+test('listComments preserves an explicit permission error instead of rendering an empty page', async () => {
+  const denied = new InstagramError('Synthetic permission denied', {
+    kind: 'permission',
+    code: 10,
+    status: 403,
+  });
+  const { req } = fakeReq(() => {
+    throw denied;
+  });
+  await assert.rejects(
+    () => listComments(req, { mediaId: 'M1', maxItems: 200 }),
+    (error: unknown) => error === denied,
+  );
+});
+
+test('listComments does not claim Meta returned an empty page when the cap discarded items', async () => {
+  const { req, calls } = fakeReq(() => ({ data: [{ id: 'SYNTHETIC' }] }));
+  assert.deepEqual(await listComments(req, { mediaId: 'M1', maxItems: 0, fetchAll: true }), {
+    items: [],
+    truncated: true,
+  });
+  assert.equal(calls.length, 1);
 });

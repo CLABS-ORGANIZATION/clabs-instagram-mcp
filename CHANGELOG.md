@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Validate comment page data, distinguish terminal cursor boundaries from real
+  continuation, and report empty API responses without asserting a filtering or
+  permission cause (CR-0003, #2). Add a read-only, sanitized HTTP/API/stdio probe.
 
 ## [0.7.0] — 2026-08-25
 

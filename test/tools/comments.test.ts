@@ -164,10 +164,13 @@ test('list_comments caps at maxItems, marks truncated, and fences text + usernam
             replies: { data: [{ id: 'r1', text: 'reply-text', username: 'ann' }] },
           },
         ],
-        paging: { cursors: { after: 'A1' } },
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
       };
     if (after === 'A1')
-      return { data: [{ id: 'c2', text: 'second' }], paging: { cursors: { after: 'A2' } } };
+      return {
+        data: [{ id: 'c2', text: 'second' }],
+        paging: { cursors: { after: 'A2' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     throw new Error('unexpected');
   };
   const { req, calls } = fakeReq(responder);
@@ -204,10 +207,16 @@ test('list_comments passes the pager note through so a give-up is visible to the
   const { req } = fakeReq((opts) => {
     const after = opts.params?.after;
     if (after === undefined)
-      return { data: [{ id: 'c1', text: 'first' }], paging: { cursors: { after: 'A1' } } };
+      return {
+        data: [{ id: 'c1', text: 'first' }],
+        paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+      };
     // An empty page while a cursor still points forward — the pager's
     // "filtered or deleted" guard.
-    return { data: [], paging: { cursors: { after: 'A2' } } };
+    return {
+      data: [],
+      paging: { cursors: { after: 'A2' }, next: 'https://graph.instagram.com/synthetic-next' },
+    };
   });
 
   const res = await tool('instagram_list_comments').handler(
@@ -867,7 +876,10 @@ test('neither listing walks the whole edge unless the caller asked for it', asyn
   // walk reports `truncated: false` exactly like a deliberate single page.
   const { req, calls } = fakeReq((opts) =>
     opts.params?.after === undefined
-      ? { data: [{ id: 'c1', text: 'first' }], paging: { cursors: { after: 'A1' } } }
+      ? {
+          data: [{ id: 'c1', text: 'first' }],
+          paging: { cursors: { after: 'A1' }, next: 'https://graph.instagram.com/synthetic-next' },
+        }
       : { data: [{ id: 'c2', text: 'second' }], paging: {} },
   );
   const res = await tool('instagram_list_comments').handler({ mediaId: 'M1' }, makeCtx(req));
@@ -878,7 +890,10 @@ test('neither listing walks the whole edge unless the caller asked for it', asyn
 
   const { req: req2, calls: calls2 } = fakeReq((opts) =>
     opts.params?.after === undefined
-      ? { data: [{ id: 't1' }], paging: { cursors: { after: 'T1' } } }
+      ? {
+          data: [{ id: 't1' }],
+          paging: { cursors: { after: 'T1' }, next: 'https://graph.instagram.com/synthetic-next' },
+        }
       : { data: [{ id: 't2' }], paging: {} },
   );
   await tool('instagram_list_tagged_media').handler({}, makeCtx(req2));
@@ -1029,4 +1044,20 @@ test('the read descriptions state the untrusted-text rule; delete states both ga
   assert.match(del, /IRREVERSIBLE/);
   assert.match(del, /instagram_hide_comment/, 'names the reversible alternative');
   assert.match(del, /IG_ALLOW_DESTRUCTIVE/, 'names the second gate');
+});
+
+test('list_comments reports a terminal empty Meta page without a false cursor or access claim (Bug #2)', async () => {
+  const { req } = fakeReq(() => ({
+    data: [],
+    paging: { cursors: { after: 'SYNTHETIC_TERMINAL' } },
+  }));
+  const result = await tool('instagram_list_comments').handler(
+    { mediaId: 'M1', fetchAll: true },
+    makeCtx(req),
+  );
+  assert.deepEqual(result.structuredContent, {
+    items: [],
+    paging: { truncated: false },
+    note: 'Meta returned an empty comments page. Comment counts do not prove API access; verify app mode, access level and granted comment permissions separately.',
+  });
 });
