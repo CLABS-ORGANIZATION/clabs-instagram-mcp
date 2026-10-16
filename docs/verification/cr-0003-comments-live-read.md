@@ -25,7 +25,9 @@ signed URLs or third-party names/text are retained.
 
 ## Observations
 
-All comment requests use graph.instagram.com/v25.0 and return HTTP 200.
+The original probe requests graph.instagram.com/v25.0 and receives HTTP 200.
+It did not capture the response version header; the follow-up below distinguishes
+the requested URL version from the version reported by Meta.
 
 | Canary media ID | Counter | Wire pages (full fields, limit 100) | API and isolated MCP stdio |
 | --- | --- | --- | --- |
@@ -89,9 +91,150 @@ node scripts/diagnose-comments.mjs \
 ```
 
 The script requires the canary handle, permits at most three numeric IDs and
-bounds each cursor walk at five pages. No credentials or cursors are supplied
+now uses limit 50 and bounds each cursor walk at twelve pages. The original
+17:10 probe used limit 100 and five pages. No credentials or cursors are supplied
 as arguments. It performs GET requests only and refuses a different account.
 
 Bug #2 stays open: the local diagnostic/pagination correction is prepared,
 while external root cause, real-comment access, review, authorized integration
 and installed-runtime verification remain distinct requirements.
+
+
+## Follow-up: access, ownership and exhaustive wire walks
+
+At **2026-10-16 20:00 UTC**, a new Infisical-launched process used the current
+secret directly in an Authorization header. No credential was exchanged,
+refreshed or written. The operator had previously reported replacing the token;
+no scope inventory or independent token-version metadata has been obtained.
+
+The complete `/me/media` response contains 15 media, no next page, and 11
+positive comment counters. The three original IDs are present. Each original
+media returns `owner.id == /me.id`, `is_comment_enabled == true`, and
+`media_product_type == REELS`. The configured user_id and scoped `/me.id`
+differ, as already observed; ownership matches the scoped ID. These checks
+rule out a wrong owner or disabled-comment flag for these three samples.
+
+The wire-only matrix makes **41 GET requests**, with `fields=id` for comments.
+Every comment response is HTTP 200 with an actual empty array, including all
+continuations until Meta omits next. No walk reaches its page or request budget.
+
+| Own media ID | Counter | Pages, limit 50 | Pages, limit 25 | Items across either walk |
+| --- | --- | --- | --- | --- |
+| 18019730993946651 | 71 | 2 | 3 | 0 |
+| 18111615803148638 | 19 | 1 | 1 | 0 |
+| 18152155072715903 | 252 | 6 | 11 | 0 |
+
+Three additional own-media samples also terminate with zero items at limit 50:
+`17913381747285830` (counter 9, published that day), `18097615922670706`
+(counter 15), and `18465445687185285` (counter 2). Each has one terminal page.
+This broadens the observation to six Reels, including recent and older media;
+it does not certify the other nine media or identify the provider's filtering
+rule. The relationship between page counts and counters is consistent with a
+server-side visibility restriction, but does not prove its exact cause.
+
+### URL version is not a verified version comparison
+
+All matrix responses declare **`instagram-api-version: v26.0`**, including
+requests whose URLs explicitly specify v24.0 or v25.0. The v24.0/limit-50 walks
+also terminate in 2/1/6 empty pages. A separate first-page check with explicit
+v26.0 and an unversioned URL gives the same version header and empty result.
+`facebook-api-version` is absent. These are observations of response headers;
+they do not establish why Meta reports v26.0 or prove a v25-only regression.
+Changing the connector's version constant is not an evidenced fix.
+
+### Permission checks and the dashboard
+
+The operator's screenshot shows `instagram_business_manage_comments` as
+ready for testing, with six calls and an option to add it to App Review.
+This proves app configuration, not the token's granted scopes. The screenshot
+also shows basic, publishing and insights ready for testing. An earlier roles
+screen lists the canary as an Instagram tester; it does not explicitly show
+invitation acceptance. Earlier screenshots show the app unpublished; no current
+published-mode change has been performed as part of this investigation.
+
+Additional GET probes using the current Instagram token:
+
+- `/debug_token`: HTTP 403, IGApiException code 10. No scope inventory returned.
+- `/debug_access_token`: HTTP 400, code 100/subcode 33. No inventory returned.
+- `/{configured-user-id}/tags`: HTTP 200, empty data. This is not proof of a
+  granted comment scope.
+
+These failures concern introspection attempts. They do not establish a missing
+comments permission. The official Graph debug-token reference requires an app
+access token or a developer's user token; the current Instagram token alone
+has not supplied an authorized introspection path. No such additional credential
+was requested, changed or created by the probe.
+
+### Diagnosis and remaining discriminating evidence
+
+Established: Meta supplies the empty arrays before the MCP; the nullish fallback
+is not discarding comments in these samples. Smaller supported page sizes and
+exhaustive continuation do not recover them. Ownership and comments-enabled
+state are correct on the three originals. The fresh process result makes an
+old active-process token an insufficient explanation. The separate terminal
+cursor/diagnostic defect is fixed in this PR, but cannot restore these comments.
+
+The leading area of investigation is effective authorization/visibility at Meta.
+The precise grant, an app-role restriction and a provider defect remain distinct
+hypotheses. Lack of Advanced Access, deletion, privacy or ad-only comments have
+not been established. The user's confirmation that comments exist does not
+identify their authors or whether they are organic versus advertising comments.
+
+The next useful evidence is a read-only inventory of scopes for this exact
+credential and confirmation of the accepted canary role, followed by reading a
+known existing own-account comment by its API ID if available. If permissions
+and role are confirmed, the wire requests below form a reproducible provider
+case. Do not add further scopes, publish the app, reauthorize repeatedly or switch
+to Facebook Login as an inferred remedy. A controlled new comment would be a
+write and requires its own authorization; none was posted.
+
+### Provider reproduction packet, prepared only
+
+- Account: authorized professional canary @fachosfera.productions.
+- Time: 2026-10-16T20:00:11.861Z onward, graph.instagram.com.
+- Request: GET `/{media-id}/comments`, fields id, limit 25 or 50; reconstruct
+  continuations with the cursor, without following or disclosing the next URL.
+- Expected: accessible top-level comment objects, or an explicit access error.
+- Actual: HTTP 200, data array empty on all pages despite positive counters;
+  ownership and comments-enabled checks succeed.
+- Example provider request IDs for limit-50 first pages: Carapó
+  `A2o-UnneJn7adq2BdMxHMun`; Don Feijote `At4RH3_19clhby3hPkGk4j0`;
+  homenaje `Ac-nz9xhLNjsCVo-V8nrgSP`.
+- Response version header: v26.0 for requested v24.0/v25.0.
+- Scope and role inventory is still missing; this packet does not certify it.
+
+No report has been sent to Meta. Owning issue #2 remains open.
+
+### Reproduce the broader GET-only probe
+
+With the same authorized secret-store injection, run:
+
+```sh
+node scripts/diagnose-comments-wire.mjs
+```
+
+The script validates the canary handle, reads at most one own-media inventory
+page, tests the three original media and at most three other own media with
+positive counters. It limits each walk to 8 pages at size 50 or 16 at size 25,
+with a global 90-request ceiling and an early stop on reported app usage >=80%.
+Terminal, repeated-cursor, malformed and budget stops are distinguished in the
+output. It prints only structural summaries, own IDs/counters, version headers,
+request IDs and source identity. Token, URLs, cursors and third-party content
+never enter the output. The existing HTTP/API/stdio diagnostic now also prints
+response version headers, uses limit 50 and has a 12-step continuation ceiling.
+
+### Primary documentation consulted
+
+- [Comment moderation](https://developers.facebook.com/documentation/instagram-platform/comment-moderation):
+  Instagram Login requires basic and manage_comments; Standard Access covers
+  own/managed professional accounts added to the app.
+- [App Review](https://developers.facebook.com/documentation/instagram-platform/app-review):
+  review is not required for the own/managed-business Standard Access scenario.
+- [Overview](https://developers.facebook.com/documentation/instagram-platform/overview):
+  Standard has general data/functionality limits, without proving this case's cause.
+- [Comments reference](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-media/comments):
+  maximum 50 per query; advertising comments are a separate API surface.
+- [Debug token](https://developers.facebook.com/docs/graph-api/reference/debug_token/):
+  introspection authentication requirements and scope metadata.
+- [Support](https://developers.facebook.com/documentation/instagram-platform/support):
+  provider bug-reporting, status and developer tools.

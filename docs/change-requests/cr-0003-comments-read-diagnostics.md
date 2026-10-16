@@ -52,6 +52,11 @@ return code 100, a nonexisting-field error, rather than a scope inventory.
   evidence, without claiming a filtering/deletion/permission cause.
 - Add structural regressions from the observed envelopes at API and MCP/tool
   boundaries, plus repeatable sanitized live evidence and its limitations.
+- Extend GET-only diagnostics with ownership, additional own-media samples,
+  page sizes 25/50, version response headers and request IDs for provider
+  investigation. Keep credentials, cursor values and comment contents private.
+  The wire matrix has a 90-request ceiling; the HTTP/API/stdio probe uses
+  limit 50 and at most 12 continuation steps per media/layer.
 
 No change to fields, shared media/tag pagination, tool inputs/output schema,
 credential management or active MCP build. Preserve MIT license/provenance.

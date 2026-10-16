@@ -42,7 +42,13 @@ const request = createIgRequest({
   fetchImpl: async (...args) => {
     const response = await fetch(...args);
     if (!serverMode)
-      emit({ stage: 'http', status: response.status, ...shape(await response.clone().json()) });
+      emit({
+        stage: 'http',
+        status: response.status,
+        instagramVersion: response.headers.get('instagram-api-version'),
+        facebookVersion: response.headers.get('facebook-api-version'),
+        ...shape(await response.clone().json()),
+      });
     return response;
   },
 });
@@ -119,18 +125,18 @@ if (serverMode) {
           method: 'GET',
           path: `/${mediaId}/comments`,
           params: {
-            limit: 100,
+            limit: 50,
             fields: variant === 'full' ? fields : variant === 'id-only' ? 'id' : undefined,
           },
         });
         emit({ stage: 'wire', mediaId, variant, page: 1, ...shape(page) });
         if (variant === 'full') {
           let current = page;
-          for (let n = 2; current.paging?.next && current.paging?.cursors?.after && n <= 5; n++) {
+          for (let n = 2; current.paging?.next && current.paging?.cursors?.after && n <= 12; n++) {
             current = await request({
               method: 'GET',
               path: `/${mediaId}/comments`,
-              params: { limit: 100, fields, after: current.paging.cursors.after },
+              params: { limit: 50, fields, after: current.paging.cursors.after },
             });
             emit({ stage: 'wire', mediaId, variant, page: n, ...shape(current) });
           }
@@ -138,10 +144,10 @@ if (serverMode) {
       }
       let apiAfter;
       let mcpAfter;
-      for (let n = 1; n <= 5; n++) {
+      for (let n = 1; n <= 12; n++) {
         const api = await listComments(request, {
           mediaId,
-          limit: 100,
+          limit: 50,
           maxItems: 200,
           fetchAll: true,
           after: apiAfter,
@@ -160,7 +166,7 @@ if (serverMode) {
           arguments: {
             account: 'default',
             mediaId,
-            limit: 100,
+            limit: 50,
             fetchAll: true,
             ...(mcpAfter ? { after: mcpAfter } : {}),
           },
