@@ -9,7 +9,7 @@
  */
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -533,34 +533,43 @@ test('runDoctor tolerates an omitted nowMs (defaults to the wall clock)', async 
 
 // --- a journal state that cannot be determined ------------------------------
 
-test('a journal path the filesystem refuses to stat is "could not be determined", not a warning', async () => {
-  // A 5000-character path segment: `statSync` throws ENAMETOOLONG and, unlike
-  // ENOENT and ENOTDIR, `throwIfNoEntry: false` does NOT suppress it — so the
-  // probe's outer catch is the only thing standing between an exotic path and a
-  // crashed health check. Deterministic on every platform and every uid.
-  const writeJournal = join(journalRoot, 'z'.repeat(5000), 'writes.jsonl');
-
-  const res = await runDoctor({
-    req: healthyReq(),
-    profile: fbProfile(),
-    settings: testSettings({ writeMode: 'apply', writeJournal }),
-    nowMs: NOW,
+test('a journal path the filesystem refuses to stat is "could not be determined", not a warning', async (t) => {
+  // Inject the filesystem failure: long segments do not produce ENAMETOOLONG
+  // on every platform. Exercise the same outer catch on Windows and POSIX.
+  const writeJournal = join(journalRoot, 'stat-refused', 'writes.jsonl');
+  const originalStat = fs.statSync;
+  const stat = t.mock.method(fs, 'statSync', (...args: Parameters<typeof fs.statSync>) => {
+    if (args[0] === writeJournal) {
+      throw Object.assign(new Error('fixture stat failure: ENAMETOOLONG'), {
+        code: 'ENAMETOOLONG',
+      });
+    }
+    return Reflect.apply(originalStat, fs, args);
   });
+  try {
+    const res = await runDoctor({
+      req: healthyReq(),
+      profile: fbProfile(),
+      settings: testSettings({ writeMode: 'apply', writeJournal }),
+      nowMs: NOW,
+    });
 
-  const line = journalLine(res.report);
-  assert.ok(
-    line.includes('state could not be determined'),
-    'the honest answer is "I could not tell"',
-  );
-  assert.ok(line.includes('ENAMETOOLONG'), 'the underlying reason is carried through');
-  // "I proved you cannot append here" earns a WARN; "I could not tell" does not
-  // — collapsing the two would cry wolf on every exotic filesystem.
-  assert.ok(!line.includes('WARN'), 'an undetermined state is not asserted as broken');
-  assert.equal(res.exitCode, 0, 'and it never fails the health check');
+    const line = journalLine(res.report);
+    assert.ok(
+      line.includes('state could not be determined'),
+      'the honest answer is "I could not tell"',
+    );
+    assert.ok(line.includes('ENAMETOOLONG'), 'the underlying reason is carried through');
+    assert.ok(!line.includes('WARN'), 'an undetermined state is not asserted as broken');
+    assert.equal(res.exitCode, 0, 'and it never fails the health check');
+    assert.equal(existsSync(writeJournal), false, 'doctor leaves the path untouched');
+  } finally {
+    stat.mock.restore();
+  }
 });
 
-// The two permission probes below are the only fixtures in this file that need
-// chmod. They are skipped for uid 0, which is exempt from the mode bits and
+// The existing-file permission fixture below needs chmod. It is skipped for
+// uid 0, which is exempt from the mode bits and
 // would sail straight through the very check being asserted — a green result
 // there would be meaningless, and a failing one would be a lie about the code.
 const asRoot = process.getuid?.() === 0;
@@ -596,36 +605,34 @@ test(
   },
 );
 
-test(
-  'a journal whose nearest existing directory is not writable is reported as unwritable',
-  { skip: asRoot },
-  async () => {
-    const dir = mkdtempSync(join(journalRoot, 'ro-dir-'));
-    chmodSync(dir, 0o500);
+test('a journal whose nearest existing directory is not writable is reported as unwritable', async (t) => {
+  const dir = mkdtempSync(join(journalRoot, 'ro-dir-'));
+  const writeJournal = join(dir, 'nested', 'writes.jsonl');
+  const originalAccess = fs.accessSync;
+  const access = t.mock.method(fs, 'accessSync', (path: fs.PathLike, mode?: number) => {
+    if (path === dir)
+      throw Object.assign(new Error('fixture directory access denied'), { code: 'EACCES' });
+    return originalAccess(path, mode);
+  });
+  try {
+    const res = await runDoctor({
+      req: healthyReq(),
+      profile: fbProfile(),
+      settings: testSettings({ writeMode: 'apply', writeJournal }),
+      nowMs: NOW,
+    });
 
-    try {
-      const res = await runDoctor({
-        req: healthyReq(),
-        profile: fbProfile(),
-        settings: testSettings({
-          writeMode: 'apply',
-          // Nothing exists below `dir`, so the walk anchors on `dir` itself — the
-          // directory the write gate's `mkdirSync` would have to create into.
-          writeJournal: join(dir, 'nested', 'writes.jsonl'),
-        }),
-        nowMs: NOW,
-      });
-
-      const line = journalLine(res.report);
-      assert.ok(line.includes('WARN'), 'an uncreatable trail is surfaced as a warning');
-      assert.ok(line.includes(`no write permission on ${dir}`), 'the blocking directory is named');
-      assert.ok(!line.includes('not created yet'), 'it is not reported as a normal fresh journal');
-      assert.equal(res.exitCode, 0);
-    } finally {
-      chmodSync(dir, 0o700);
-    }
-  },
-);
+    const line = journalLine(res.report);
+    assert.ok(line.includes('WARN'), 'an uncreatable trail is surfaced as a warning');
+    assert.ok(line.includes(`no write permission on ${dir}`), 'the blocking directory is named');
+    assert.ok(!line.includes('not created yet'), 'it is not reported as a normal fresh journal');
+    assert.equal(res.exitCode, 0);
+    assert.equal(existsSync(writeJournal), false, 'doctor does not create the journal');
+    assert.equal(existsSync(join(dir, 'nested')), false, 'doctor does not create directories');
+  } finally {
+    access.mock.restore();
+  }
+});
 
 test('a journal past a mebibyte is sized in MiB, not in five-digit KiB', async () => {
   const dir = mkdtempSync(join(journalRoot, 'big-'));

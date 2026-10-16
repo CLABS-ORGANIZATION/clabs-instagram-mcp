@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Make doctor journal error fixtures portable on Windows without changing the
+  read-only probe behavior (CR-0002, #4).
+- Refresh six production dependency resolutions within existing manifest ranges
+  to restore the audit gate (CR-0002, #5).
 
 ## [0.7.0] — 2026-08-25
 

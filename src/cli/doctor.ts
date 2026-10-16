@@ -25,7 +25,7 @@
  * throwing out of `runDoctor`, and the whole report is passed through the secret
  * redactor as a final safety net.
  */
-import { accessSync, constants, statSync } from 'node:fs';
+import fs, { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { debugToken, getAccount, summarizeTokenExpiry } from '../api/account.js';
@@ -201,7 +201,7 @@ type AnchorResult =
 function nearestExistingDir(path: string): AnchorResult {
   let dir = dirname(resolve(path));
   for (;;) {
-    const stat = statSync(dir, { throwIfNoEntry: false });
+    const stat = fs.statSync(dir, { throwIfNoEntry: false });
     if (stat !== undefined) {
       return stat.isDirectory() ? { kind: 'dir', dir } : { kind: 'notDir', path: dir };
     }
@@ -238,11 +238,11 @@ function nearestExistingDir(path: string): AnchorResult {
  */
 function probeJournal(path: string): JournalState {
   try {
-    const stat = statSync(path, { throwIfNoEntry: false });
+    const stat = fs.statSync(path, { throwIfNoEntry: false });
     if (stat !== undefined) {
       if (!stat.isFile()) return { kind: 'blocked', reason: 'the path is not a regular file' };
       try {
-        accessSync(path, constants.W_OK);
+        fs.accessSync(path, constants.W_OK);
       } catch {
         return { kind: 'blocked', reason: 'no write permission on the file' };
       }
@@ -258,7 +258,7 @@ function probeJournal(path: string): JournalState {
       return { kind: 'blocked', reason: `${anchor.path} is not a directory` };
     }
     try {
-      accessSync(anchor.dir, constants.W_OK);
+      fs.accessSync(anchor.dir, constants.W_OK);
     } catch {
       return { kind: 'blocked', reason: `no write permission on ${anchor.dir}` };
     }

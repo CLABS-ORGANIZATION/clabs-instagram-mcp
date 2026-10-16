@@ -39,7 +39,9 @@ update only packages needed to restore the audit gate. PR #3 stays documentary.
   assuming ENAMETOOLONG or POSIX directory mode bits on Windows.
 - Update production dependencies within existing manifest ranges; inspect the
   lockfile delta. No blanket dependency update, forced audit fix or upstream import.
-- Preserve doctor behavior, permissions and read-only probing.
+- Use the standard fs object in doctor so tests can inject failures without
+  synchronizing all Node built-in exports. Preserve behavior, permissions and
+  read-only probing.
 
 No active checkout build, runtime replacement, package identity change,
 publish, deployment, credential changes or automatic merge.
