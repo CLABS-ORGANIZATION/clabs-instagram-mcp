@@ -163,8 +163,8 @@ const listCommentsTool = defineTool({
       .max(100)
       .optional()
       .describe(
-        'Page-size hint forwarded to Instagram (1–100). Independent of the server item cap that ' +
-          'bounds fetchAll.',
+        "Page-size hint (1–100), capped to Meta's maximum of 50 comments per query. Independent " +
+          'of the server item cap that bounds fetchAll.',
       ),
     after: z
       .string()

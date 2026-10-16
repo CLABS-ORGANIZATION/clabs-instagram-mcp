@@ -17,7 +17,7 @@
  * but `id` is optional), CC-DATA-4 (`fetchAll` cap / off-by-one). A deleted
  * comment / media surfaces as a propagated InstagramError (CC-DATA-5).
  */
-import type { IgRequestFn } from '../core/types.js';
+import { InstagramError, type GraphListResponse, type IgRequestFn } from '../core/types.js';
 import { fetchPagedEdge, type PagedResult, type PageParams } from './media.js';
 
 // The cursor walk is shared with `api/media.ts` — one loop, one set of
@@ -30,6 +30,9 @@ export type { PagedResult, PageParams };
 /** Fields requested for a comment (and, recursively, for each reply). */
 const COMMENT_FIELDS =
   'id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}';
+
+/** Meta's IG Media Comments reference documents at most 50 comments per query. */
+const COMMENTS_PAGE_SIZE_MAX = 50;
 
 /** `get_comment` additionally pulls moderation state and parent/media context. */
 const COMMENT_DETAIL_FIELDS =
@@ -176,16 +179,61 @@ export async function listComments(
   req: IgRequestFn,
   params: ListCommentsParams,
 ): Promise<PagedComments> {
-  return fetchPagedEdge<RawComment, Comment>(
-    req,
+  // Keep the existing tool input range compatible while bounding the wire hint
+  // to the documented comment-page maximum. This is independent of maxItems.
+  const pageLimit =
+    params.limit === undefined ? undefined : Math.min(params.limit, COMMENTS_PAGE_SIZE_MAX);
+  // Validate the comment edge before the shared paginator can conflate a
+  // missing data key with an empty array. Cursor boundaries can also exist on
+  // terminal pages: only Meta's next marker advertises continuation (Bug #2).
+  let sawEmptyPage = false;
+  const commentsRequest: IgRequestFn = async <T>(
+    options: Parameters<IgRequestFn>[0],
+  ): Promise<T> => {
+    const page = await req<GraphListResponse<RawComment>>(options);
+    if (!Array.isArray(page?.data)) {
+      throw new InstagramError(
+        'Comments response has no data array; comment access is undetermined.',
+        {
+          kind: 'upstream',
+        },
+      );
+    }
+    sawEmptyPage ||= page.data.length === 0;
+    if (!page.paging?.next) {
+      return { ...page, paging: undefined } as T;
+    }
+    const after = page.paging.cursors?.after;
+    if (typeof after !== 'string' || after.length === 0) {
+      throw new InstagramError(
+        'Comments response advertises another page without a usable cursor.',
+        {
+          kind: 'upstream',
+        },
+      );
+    }
+    return page as T;
+  };
+  const result = await fetchPagedEdge<RawComment, Comment>(
+    commentsRequest,
     (after) => ({
       method: 'GET',
       path: `/${params.mediaId}/comments`,
-      params: { fields: COMMENT_FIELDS, limit: params.limit, after },
+      params: { fields: COMMENT_FIELDS, limit: pageLimit, after },
     }),
     params,
     normalizeComment,
   );
+  if (result.note?.includes('a page returned no items')) {
+    result.note =
+      'Meta returned no items on a comments page with continuation — resume from `after`; ' +
+      'the response does not establish why comments are unavailable.';
+  } else if (sawEmptyPage && result.items.length === 0 && result.note === undefined) {
+    result.note =
+      'Meta returned an empty comments page. Comment counts do not prove API access; ' +
+      'verify app mode, access level and granted comment permissions separately.';
+  }
+  return result;
 }
 
 /**

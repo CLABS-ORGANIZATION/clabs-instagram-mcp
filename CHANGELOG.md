@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Validate comment page data, distinguish terminal cursor boundaries from real
+  continuation, and report empty API responses without asserting a filtering or
+  permission cause (CR-0003, #2). Add a read-only, sanitized HTTP/API/stdio probe.
+- Bound outgoing comment page-size hints to the documented maximum of 50 while
+  preserving the existing tool input range. Regress IDs, encoded cursors, HTTP
+  parameters and nested replies through the MCP protocol (CR-0003, #2).
 
 ## [0.7.0] — 2026-08-25
 
