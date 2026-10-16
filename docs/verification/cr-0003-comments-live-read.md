@@ -393,3 +393,36 @@ the documented field set, IDs stay in the expected paths and token matching
 is confirmed only as a boolean. This supports correct mapping in that run;
 it does not retroactively explain the earlier live difference or prove a
 provider-side cause. A clean-source repeat is recorded separately.
+
+
+### Clean-source transport confirmation after the audit
+
+At **2026-10-16 20:30:47 UTC** (22:30 Europe/Madrid), source
+`fc45a4ad4553b9a0ef61ae4a2cd510ffd98205c5`, clean tree, Node 22.22.1,
+Instagram Login and a fresh existing Infisical injection were verified.
+The API and actual stdio client both submit input limit 100. All observed
+comments HTTP requests send 50. The stdio server's own nine requests confirm
+expected numeric media paths, the documented fields, token matching as a
+boolean, no unexpected query keys and no appsecret_proof.
+
+| Media ID | API steps | MCP steps | HTTP/MCP items | Both terminal |
+| --- | --- | --- | --- | --- |
+| 18019730993946651 | 2 | 2 | 0 | yes |
+| 18111615803148638 | 1 | 1 | 0 | yes |
+| 18152155072715903 | 6 | 6 | 0 | yes |
+
+All nine child HTTP responses are 200 with data arrays empty. Their next flags
+match the MCP after flags one-to-one. No MCP errors or uninspected continuation
+remain in this run. The response header remains v26.0. Production source/tests
+are unchanged since the 1,257-test/100%-coverage build; this follow-up commit
+only records the clean run. Active checkout remains at 3ec0f564cfb3a419d06a67c0dc4ed515917e28d0
+with its same four publishing modifications; no runtime replacement occurred.
+
+Audit conclusion: the wire page-size mismatch and diagnostic coupled-walk stop
+are corrected, in addition to the earlier terminal/malformed-page safeguards.
+The host, node ID, field names, token parameter, cursor encoding and positive
+comment/reply mapping agree with the primary contract in the tested path.
+The independently minimal curl control still reproduces an empty initial page
+without those optional parameters or any connector code. The exact visibility
+restriction or provider-side cause remains open. The new documented age-gating
+and restricted-user limits are hypotheses to verify, not established diagnoses.
