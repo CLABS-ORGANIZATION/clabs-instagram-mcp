@@ -72,7 +72,8 @@ changes requires its own reviewed delivery before replacing the running build.
   are distinguished; no fabricated historical approval.
 - [x] Local guard catches broken entry links, with negative coverage.
 - [x] Quality-gate results identify the exact dependency/build baseline.
-- [ ] Proposed fork policy and Web-pilot dependency are resolved before merge.
+- [x] Web-pilot dependency is verified against its merged PR and recorded review.
+- [ ] Proposed fork policy is accepted before integration.
 - [ ] PR review and integration evidence are recorded before closing issue #1.
 
 ## Validation

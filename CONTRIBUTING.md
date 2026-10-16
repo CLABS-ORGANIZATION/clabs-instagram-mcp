@@ -23,7 +23,7 @@ the two Instagram auth paths and the credential resolution order.
 ## Quality gate
 
 ```bash
-npm run check        # the full gate: lint + format:check + build + test
+npm run check        # docs guards + lint + format + build + coverage + production audit
 npm run lint         # eslint . (type-checked)
 npm run format:check # prettier --check .
 npm test             # node --test over dist (needs a prior build)
