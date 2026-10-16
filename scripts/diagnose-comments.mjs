@@ -40,6 +40,20 @@ const request = createIgRequest({
   clock: systemClock,
   log,
   fetchImpl: async (...args) => {
+    const outgoing = new URL(args[0]);
+    if (!serverMode && outgoing.pathname.endsWith('/comments'))
+      emit({
+        stage: 'request-contract',
+        method: args[1]?.method,
+        host: outgoing.hostname,
+        path: outgoing.pathname,
+        queryKeys: [...outgoing.searchParams.keys()].sort(),
+        limitSent: outgoing.searchParams.get('limit'),
+        fieldsSent: outgoing.searchParams.get('fields'),
+        hasAfter: outgoing.searchParams.has('after'),
+        tokenMatchesProfile: outgoing.searchParams.get('access_token') === profile.accessToken,
+        hasAppsecretProof: outgoing.searchParams.has('appsecret_proof'),
+      });
     const response = await fetch(...args);
     if (!serverMode)
       emit({
@@ -147,13 +161,14 @@ if (serverMode) {
       for (let n = 1; n <= 12; n++) {
         const api = await listComments(request, {
           mediaId,
-          limit: 50,
+          limit: 100,
           maxItems: 200,
           fetchAll: true,
           after: apiAfter,
         });
         emit({
           stage: 'api',
+          requestedLimit: 100,
           mediaId,
           page: n,
           items: api.items.length,
@@ -166,7 +181,7 @@ if (serverMode) {
           arguments: {
             account: 'default',
             mediaId,
-            limit: 50,
+            limit: 100,
             fetchAll: true,
             ...(mcpAfter ? { after: mcpAfter } : {}),
           },
@@ -174,6 +189,7 @@ if (serverMode) {
         const mcp = result.structuredContent;
         emit({
           stage: 'mcp-stdio',
+          requestedLimit: 100,
           mediaId,
           page: n,
           isError: !!result.isError,

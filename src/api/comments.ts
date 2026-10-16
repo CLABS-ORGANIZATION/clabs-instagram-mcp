@@ -31,6 +31,9 @@ export type { PagedResult, PageParams };
 const COMMENT_FIELDS =
   'id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}';
 
+/** Meta's IG Media Comments reference documents at most 50 comments per query. */
+const COMMENTS_PAGE_SIZE_MAX = 50;
+
 /** `get_comment` additionally pulls moderation state and parent/media context. */
 const COMMENT_DETAIL_FIELDS =
   'id,text,username,timestamp,like_count,hidden,parent_id,media{id,media_type,permalink},' +
@@ -176,6 +179,10 @@ export async function listComments(
   req: IgRequestFn,
   params: ListCommentsParams,
 ): Promise<PagedComments> {
+  // Keep the existing tool input range compatible while bounding the wire hint
+  // to the documented comment-page maximum. This is independent of maxItems.
+  const pageLimit =
+    params.limit === undefined ? undefined : Math.min(params.limit, COMMENTS_PAGE_SIZE_MAX);
   // Validate the comment edge before the shared paginator can conflate a
   // missing data key with an empty array. Cursor boundaries can also exist on
   // terminal pages: only Meta's next marker advertises continuation (Bug #2).
@@ -212,7 +219,7 @@ export async function listComments(
     (after) => ({
       method: 'GET',
       path: `/${params.mediaId}/comments`,
-      params: { fields: COMMENT_FIELDS, limit: params.limit, after },
+      params: { fields: COMMENT_FIELDS, limit: pageLimit, after },
     }),
     params,
     normalizeComment,

@@ -58,7 +58,14 @@ return code 100, a nonexisting-field error, rather than a scope inventory.
   The wire matrix has a 90-request ceiling; the HTTP/API/stdio probe uses
   limit 50 and at most 12 continuation steps per media/layer.
 
-No change to fields, shared media/tag pagination, tool inputs/output schema,
+Additional implementation review against the official Comments reference found
+a documented maximum of 50 comments per query. Preserve the existing 1–100
+input schema for compatibility, but cap the outgoing comments page-size hint
+at 50. Verify exact HTTP construction, opaque string IDs/cursors, positive
+comment/reply mapping and MCP output through a protocol regression. An
+independent minimal curl GET is the control for the observed empty response.
+
+No change to fields, shared media/tag pagination, tool input/output schema,
 credential management or active MCP build. Preserve MIT license/provenance.
 
 ## Verification and acceptance

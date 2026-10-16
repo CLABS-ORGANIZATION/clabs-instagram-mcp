@@ -264,3 +264,100 @@ GET-only diagnostic scripts; their real executions are recorded above. The
 previous full 1,256-test/100%-coverage result applies to unchanged production
 source and tests, not a new full-suite run in this follow-up. CI audit and
 Windows remain the separately tracked inherited limits until PR #6 is integrated.
+
+
+## Implementation audit against the official Instagram Login contract
+
+The operator supplied two additional UI observations: the official debugger
+shows the inspected token valid, for CLABS Media Pilot-IG and the same scoped
+user ID, with all five agreed scopes including manage_comments; Instagram lists
+the app under Active, authorized on 2026-10-16. Only these facts are transcribed.
+The debugger screenshot includes a credential field and is never attached or
+copied into this repository. Active authorization is not independently labelled
+as acceptance of the tester invitation, and does not prove comment readability.
+
+The requested review traced tool input -> API -> auth -> URL -> actual HTTP ->
+JSON parsing -> comment/reply normalization -> MCP structured output. The
+current official guide and references were fetched directly from Meta's `.md`
+endpoints; no upstream code or third-party workaround was imported.
+
+| Concern | Official contract | Implementation finding |
+| --- | --- | --- |
+| Host and method | Instagram Login: GET on graph.instagram.com | Correct; no graph.facebook.com call or write on the comments reader |
+| Node identifier | IG Media ID from own /media | Passed unchanged as a string from mediaId into the path; verified ownership for originals |
+| User identifier | /me.id is app-scoped; user_id is professional account ID | Distinction agrees with the official get-started reference; user/account ID is not substituted for media ID |
+| Authentication | Instagram User token; access_token query shown in reference | Auth contributes the token, without appsecret_proof; raw query and Bearer controls agree |
+| Fields | id, text, username, timestamp, like_count; replies expansion supported | Requested fields are documented; username is supported with manage_comments, so no speculative from-only rewrite |
+| Page size | Maximum 50 returned per query | Existing tool accepts 1–100 and forwarded the hint unchanged. Cap the wire hint at 50, keeping input compatibility |
+| Cursor | Opaque cursor and actual next marker | URLSearchParams preserves cursor value; never cast IDs/cursors to numbers or follow a next URL |
+| Returned data | Collection in data; nested replies.data | Parser returns raw JSON; normalization maps every present top-level item and flattens reply data, preserving optional omissions |
+| MCP mapping | Caller account/fetchAll/maxItems are local controls | Only fields, limit, after and access_token enter the comments query; no local controls leak to Graph |
+
+### Independent minimum-request control
+
+At **2026-10-16 20:19 UTC** (22:19 Europe/Madrid), an independent launcher
+verified the canary via /me, then ran four GET variants per original media:
+
+1. Bare comments endpoint plus Authorization Bearer, no fields/limit/after.
+2. Bare endpoint plus access_token query, no other parameters.
+3. Explicit fields id,text,timestamp, no limit/after.
+4. System curl with only access_token in the query, no fields/limit/after.
+
+All **12 comment requests** return HTTP 200 with a genuine empty data array.
+Only the first page is inspected in this minimal control; next is present for
+Carapó/homenaje and absent for Don Feijote. The earlier exhaustive 25/50 walks
+remain separate evidence. Node responses report instagram-api-version v26.0.
+The curl process receives its configuration via stdin: no token in arguments,
+files or printed output; provider bodies stay in memory and only response
+shape/status/counts leave the launcher. No connector module constructs or maps
+these curl requests. Thus production fields, explicit page size, cursor mapping
+and response normalization are not necessary to reproduce the initial empty
+page. This does not prove the exact provider-side restriction.
+
+### Bounded correction and meaningful regression
+
+A new MCP protocol regression was first run before the page-size correction:
+it failed with actual HTTP limit **100**, expected **50**. After the correction,
+the same test also checks an ID larger than Number.MAX_SAFE_INTEGER stays an
+exact string, a cursor containing + / = survives URL encoding, the token stays
+intact, only documented query keys reach HTTP, and positive synthetic comments,
+usernames, timestamps, counts and nested replies reach MCP output. The two
+pages terminate correctly without following the untrusted next URL.
+
+The diagnostic HTTP/API/stdio probe now requests input limit 100 through API
+and MCP, while capturing safe request metadata for the local API's actual
+HTTP request. Its raw control still uses limit 50. Token equality is emitted
+as a boolean only; token/cursor values and full URLs are never printed.
+This fixes a documented page-size mismatch; the minimum curl control already
+shows that it cannot be claimed as a fix for the initial empty-array problem.
+
+### Other documented limits, not established causes
+
+The IG Comment reference explicitly says comments on age-gated media are not
+returned, and comments by restricted users require the documented unrestricted/
+approved conditions. These are concrete visibility rules to investigate, not
+findings about this account. The references also separate ad comments from the
+organic comments edge. No age setting, user restriction, ads setup or app role
+was changed, and none is declared the cause. No extra permission, Facebook
+Login migration, app publication or new comment is justified by this audit.
+
+Relevant primary references: [Comment moderation](https://developers.facebook.com/documentation/instagram-platform/comment-moderation),
+[Comments](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-media/comments),
+[IG Comment fields and limits](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-comment),
+[Instagram Login get-started IDs](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/get-started).
+
+
+### Validation of the bounded implementation change
+
+The same new protocol test fails before the correction with HTTP limit 100
+rather than 50, and passes afterward. Local comment API/tools/protocol modules
+pass 29/40/2 tests. README generation, lint, formatting, build and syntax checks
+pass; README's generated tables have no drift.
+
+A full sandboxed coverage attempt failed in existing subprocess/transport test
+files and reported incomplete global coverage. Repeating the same built suite
+with the required local filesystem/loopback execution access passes **1,257
+tests, zero failures, and 100% statements/branches/functions/lines**. No tests
+were weakened or changed to bypass those environmental restrictions. Existing
+production audit and Windows fixture issues remain separately tracked in #5/#4
+and prepared in PR #6; this change does not import their fixes.
