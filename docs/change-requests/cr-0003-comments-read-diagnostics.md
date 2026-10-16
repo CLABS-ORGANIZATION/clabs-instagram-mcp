@@ -36,7 +36,7 @@ contain cursors but no `paging.next`; the current paginator falsely presents
 them as continued/truncated reads. The third Reel has three empty pages,
 with `next` on the first two and no `next` on the third.
 
-The upstream reason for withholding comments is not yet established.
+The upstream reason for returning empty comment arrays is not yet established.
 Counters do not prove comment access, and a successful empty page does not
 prove missing permissions or privacy filtering. The permissions probes
 return code 100, a nonexisting-field error, rather than a scope inventory.
