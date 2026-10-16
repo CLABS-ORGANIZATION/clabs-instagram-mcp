@@ -1,5 +1,10 @@
 # Contributing
 
+For this fork, start with the [CLABS Working Model](docs/clabs-working-model.md)
+and [CLABS delivery and review](docs/clabs-delivery.md). They define ownership,
+CR/ADR preflight and exact-commit review; the technical guidance below remains
+applicable.
+
 A personal project, but the bar is the same as for a team one: every change
 lands with its tests, behind the full gate, with the generated docs in sync.
 
