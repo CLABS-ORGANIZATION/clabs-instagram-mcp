@@ -367,6 +367,10 @@ file. Writes preview by default; set `IG_WRITE_MODE=apply` (and
 
 ## Project documentation
 
+CLABS maintainers and agents start with the [CLABS Working Model](docs/clabs-working-model.md)
+and [CLABS maintenance](CLABS-MAINTENANCE.md). The upstream guides below remain
+useful technical references; their roadmap is not the CLABS backlog.
+
 | Document | Contents |
 | -------- | -------- |
 | [docs/architecture.md](docs/architecture.md) | Layered architecture, tool registry, transports, config, testing strategy |

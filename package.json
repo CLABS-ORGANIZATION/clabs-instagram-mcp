@@ -47,8 +47,10 @@
     "audit": "npm audit --audit-level=high --omit=dev",
     "audit:dev": "npm audit --audit-level=high",
     "gen:readme": "npm run build && node scripts/gen-readme.mjs",
-    "check": "npm run lint && npm run format:check && npm run build && npm run coverage && npm run audit",
-    "prepublishOnly": "npm run check"
+    "check": "npm run docs:check && npm run docs:test && npm run lint && npm run format:check && npm run build && npm run coverage && npm run audit",
+    "prepublishOnly": "npm run check",
+    "docs:check": "node scripts/check-clabs-docs.mjs",
+    "docs:test": "node scripts/check-clabs-docs.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

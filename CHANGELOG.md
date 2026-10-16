@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- CLABS agent entry, working model, delivery/review workflow and documentation guard.
+- Independent-maintenance policy proposal; runtime and upstream distribution identities remain unchanged.
 
 ## [0.7.0] — 2026-08-25
 
